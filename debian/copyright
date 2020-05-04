@@ -1,0 +1,110 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: coveralls-python
+Source: <https://github.com/coveralls-clients/coveralls-python>
+#
+# Please double check copyright with the licensecheck(1) command.
+
+Files:     .circleci/config.yml
+           .github/CODEOWNERS
+           .github/workflows/pythonpackage.yml
+           .gitignore
+           .pre-commit-config.yaml
+           .setup.py~
+           .tcedit.dst
+           .travis.yml
+           MANIFEST.in
+           README.rst
+           coveralls/__init__.py
+           coveralls/__main__.py
+           coveralls/api.py
+           coveralls/cli.py
+           coveralls/exception.py
+           coveralls/git.py
+           coveralls/reporter.py
+           coveralls/version.py
+           docs/authors.rst
+           docs/conf.py
+           docs/index.rst
+           docs/release.rst
+           docs/tips/coveragerc.rst
+           docs/tips/nosetests.rst
+           docs/troubleshooting.rst
+           docs/usage/configuration.rst
+           docs/usage/index.rst
+           docs/usage/multilang.rst
+           docs/usage/tox.rst
+           docs/usage/vcsconfig.rst
+           example/__init__.py
+           example/project.py
+           example/runtests.py
+           nonunicode/__init__.py
+           nonunicode/malformed.py
+           nonunicode/nonunicode.py
+           setup.cfg
+           setup.py
+           tests/__init__.py
+           tests/api/__init__.py
+           tests/api/configuration_test.py
+           tests/api/encoding_test.py
+           tests/api/reporter_test.py
+           tests/api/wear_test.py
+           tests/api_test.py
+           tests/cli_test.py
+           tests/conftest.py
+           tests/git_test.py
+           tox.ini
+Copyright: __NO_COPYRIGHT_NOR_LICENSE__
+License:   __NO_COPYRIGHT_NOR_LICENSE__
+
+Files:     LICENSE.txt
+Copyright: 2013 coveralls-clients contributors
+License:   Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+
+#----------------------------------------------------------------------------
+# xml and html files (skipped):
+#         CHANGELOG.md
+#         .github/PULL_REQUEST_TEMPLATE.md
+#         .github/ISSUE_TEMPLATE.md
+
+#----------------------------------------------------------------------------
+# Files marked as NO_LICENSE_TEXT_FOUND may be covered by the following
+# license/copyright files.
+
+#----------------------------------------------------------------------------
+# License file: LICENSE.txt
+ Copyright (c) 2013 by coveralls-clients contributors
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.

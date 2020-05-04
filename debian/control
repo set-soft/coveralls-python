@@ -1,0 +1,15 @@
+Source: python-coveralls-client
+Section: devel
+Priority: optional
+Maintainer: Salvador E. Tropea <stropea@inti.gob.ar>
+Build-Depends: debhelper (>=11~), dh-python, python3-all, python3-setuptools
+Standards-Version: 4.1.4
+Homepage: https://github.com/coveralls-clients/coveralls-python
+X-Python3-Version: >= 3.2
+
+Package: python-coveralls-client
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}, ${python3:Depends}, python3-coverage, python-docopt, python3-requests
+Description: Python client for coveralls.
+ This client uploads the python3-coverage results to https://coveralls.io/
