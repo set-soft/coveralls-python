@@ -10,6 +10,6 @@ X-Python3-Version: >= 3.2
 Package: python-coveralls-client
 Architecture: all
 Multi-Arch: foreign
-Depends: ${misc:Depends}, ${python3:Depends}, python3-coverage, python-docopt, python3-requests
+Depends: ${misc:Depends}, ${python3:Depends}, python3-coverage, python-docopt, python3-requests, git
 Description: Python client for coveralls.
  This client uploads the python3-coverage results to https://coveralls.io/
