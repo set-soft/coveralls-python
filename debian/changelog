@@ -1,3 +1,9 @@
+python-coveralls-client (2.0.0-2) stable; urgency=medium
+
+  * Fixed docopt dependency
+
+ -- Salvador E. Tropea <salvador@kaira.inti.gov.ar>  Thu, 07 May 2020 08:26:23 -0300
+
 python-coveralls-client (2.0.0-1) stable; urgency=low
 
   * First release
