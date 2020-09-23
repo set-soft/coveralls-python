@@ -1,8 +1,14 @@
+python3-coveralls-client (2.0.0-3) stable; urgency=medium
+
+  * Fixed the package name to work for any Python 3 interpreter
+
+ -- Salvador E. Tropea <stropea@inti.gob.ar>  Wed, 23 Sep 2020 16:17:24 -0300
+
 python-coveralls-client (2.0.0-2) stable; urgency=medium
 
   * Fixed docopt dependency
 
- -- Salvador E. Tropea <salvador@kaira.inti.gov.ar>  Thu, 07 May 2020 08:26:23 -0300
+ -- Salvador E. Tropea <stropea@inti.gob.ar>  Thu, 07 May 2020 08:26:23 -0300
 
 python-coveralls-client (2.0.0-1) stable; urgency=low
 
