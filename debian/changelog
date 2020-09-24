@@ -1,3 +1,9 @@
+python3-coveralls-client (2.1.2-1) stable; urgency=medium
+
+  * New upstream release. Support for --finish
+
+ -- Salvador E. Tropea <stropea@inti.gob.ar>  Thu, 24 Sep 2020 09:16:47 -0300
+
 python3-coveralls-client (2.0.0-3) stable; urgency=medium
 
   * Fixed the package name to work for any Python 3 interpreter
