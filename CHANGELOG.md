@@ -1,3 +1,35 @@
+<a name="2.1.2"></a>
+## 2.1.2 (2020-08-12)
+
+#### Features
+
+* **circleci:**  support parallel builds (#233) ([5e05654c](5e05654c))
+             Note: this is partially a fix for the `--finish` command
+             introduced in v2.1.0, which did not seem to work for some CircleCI
+             users.
+
+
+<a name="2.1.1"></a>
+## 2.1.1 (2020-07-08)
+
+#### Bug Fixes
+
+*  fix unhashable CoverallsException (#230) ([aa55335d](aa55335d))
+   This fixes a regression introduced in v2.1.0 which affected (at least) any
+   Python 3.5 installations.
+
+
+<a name="2.1.0"></a>
+## 2.1.0 (2020-07-07)
+
+#### Features
+
+* **cli**:  add new `--finish` flag for finalizing parallel builds (#277) ([f597109b](f597109b))
+
+#### Bug Fixes
+
+* **github:**  fix Github Actions support (#227) ([f597109b](f597109b))
+
 <a name="2.0.0"></a>
 ## 2.0.0 (2020-04-07)
 
