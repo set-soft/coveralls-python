@@ -1,11 +1,16 @@
+ci:
+    autofix_commit_msg: 'refactor(lint): apply automatic lint fixes'
+    autoupdate_commit_msg: 'chore(deps): bump pre-commit linter versions'
+
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.5.0
+    rev: v4.3.0
     hooks:
     -   id: check-case-conflict
     -   id: check-executables-have-shebangs
     -   id: check-json
     -   id: check-merge-conflict
+    -   id: check-shebang-scripts-are-executable
     -   id: check-symlinks
     -   id: check-toml
     -   id: check-vcs-permalinks
@@ -15,8 +20,6 @@ repos:
     -   id: detect-private-key
     -   id: end-of-file-fixer
         exclude: example/.*
-    -   id: file-contents-sorter
-        files: .(docker|git)ignore
     -   id: mixed-line-ending
         args: [--fix=lf]
     -   id: trailing-whitespace
@@ -29,9 +32,10 @@ repos:
     -   id: double-quote-string-fixer
         exclude: nonunicode/.*
     -   id: name-tests-test
+        exclude: tests/data/.*
     -   id: requirements-txt-fixer
--   repo: https://github.com/pre-commit/mirrors-pylint
-    rev: v2.4.4
+-   repo: https://github.com/pycqa/pylint
+    rev: v2.14.3
     hooks:
     -   id: pylint
         additional_dependencies:
@@ -41,8 +45,11 @@ repos:
         - --allowed-direct-imports="typing.*"
         - --load-plugins=pylint_import_modules
         - --max-line-length=79
-        - --ignore-imports=yes
+        - --max-args=10
+        - --score=n
+        - -d bad-file-encoding
         - -d broad-except
+        - -d duplicate-code
         - -d fixme
         - -d import-error
         - -d import-only-modules
@@ -50,50 +57,68 @@ repos:
         - -d locally-disabled
         - -d missing-docstring
         - -d too-few-public-methods
-        - -d ungrouped-imports
+        - -d ungrouped-imports  # conflicts with reorder-python-imports
+        - -d wrong-import-order  # conflicts with reorder-python-imports
+        - -d consider-using-f-string  # not py35 compatible
+        - -d unspecified-encoding  # TODO: reevaluate
+        - -d disallowed-name  # TODO: fix
         exclude: example/.*
 -   repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.1.7
+    rev: v1.2.0
     hooks:
     -   id: remove-tabs
 -   repo: https://github.com/asottile/reorder_python_imports
-    rev: v2.0.0
+    rev: v3.1.0
     hooks:
     -   id: reorder-python-imports
         args: [--py3-plus]
         exclude: nonunicode/.*
 -   repo: https://github.com/asottile/pyupgrade
-    rev: v2.1.0
+    rev: v2.34.0
     hooks:
     -   id: pyupgrade
         args: [--py3-plus]
         exclude: nonunicode/.*
 -   repo: https://github.com/asottile/yesqa
-    rev: v1.1.0
+    rev: v1.3.0
     hooks:
     -   id: yesqa
         files: coveralls/.*
 -   repo: https://github.com/pre-commit/mirrors-autopep8
-    rev: v1.5
+    rev: v1.6.0
     hooks:
     -   id: autopep8
         files: coveralls/.*
 -   repo: https://github.com/PyCQA/pydocstyle
-    rev: 5.0.2
+    rev: 6.1.1
     hooks:
     -   id: pydocstyle
         args:
-        - --ignore=D1,D203,D205,D212,D400,D401,D404,D413
+        - --ignore=D1,D203,D205,D212,D400,D401,D404,D407,D412,D413
         files: coveralls/.*
--   repo: https://gitlab.com/pycqa/flake8
-    rev: 3.7.9
+-   repo: https://github.com/PyCQA/flake8
+    rev: 4.0.1
     hooks:
     -   id: flake8
+        additional_dependencies:
+        - flake8-2020==1.6.1
+        - flake8-broken-line==0.4.0
+        - flake8-builtins==1.5.3
+        - flake8-commas==2.1.0
+        - flake8-comprehensions==3.10.0
         args:
         - --ignore=E501,W503,F401,F811
         files: coveralls/.*
+-   repo: local
+    hooks:
+    -   id: pytest-fixture-require-scope
+        name: Require explicit scope for pytest fixtures
+        description: 'Ensure we explicitly set pytest fixture scopes'
+        entry: '@pytest\.fixture( |\n|(\(\)))'
+        language: pygrep
+        types: [python]
 -   repo: https://github.com/pre-commit/pygrep-hooks
-    rev: v1.5.1
+    rev: v1.9.0
     hooks:
     -   id: python-no-eval
     -   id: python-no-log-warn
@@ -101,3 +126,5 @@ repos:
 
 # rst
     -   id: rst-backticks
+    -   id: rst-directive-colons
+    -   id: rst-inline-touching-normal

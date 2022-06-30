@@ -40,7 +40,7 @@ BuildKite
 All variables:
 
 - ``BUILDKITE``
-- ``BUILDKIT_JOB_ID``
+- ``BUILDKITE_JOB_ID``
 - ``BUILDKITE_BRANCH``
 
 CircleCI
@@ -52,8 +52,10 @@ CircleCI
 All variables:
 
 - ``CIRCLECI``
+- ``CIRCLE_WORKFLOW_ID``
 - ``CIRCLE_BUILD_NUM``
 - ``CIRCLE_BRANCH``
+- ``CIRCLE_NODE_INDEX``
 - ``CI_PULL_REQUEST``
 
 Github Actions
@@ -102,15 +104,35 @@ All variables:
 
 SemaphoreCI
 -----------
+
+Classic
+~~~~~~~
+
 ::
 
-    passenv = SEMAPHORE SEMAPHORE_BUILD_NUMBER BRANCH_NAME PULL_REQUEST_NUMBER
+    passenv = SEMAPHORE SEMAPHORE_EXECUTABLE_UUID SEMAPHORE_JOB_UUID SEMAPHORE_BRANCH_ID BRANCH_NAME
 
 All variables:
 
 - ``SEMAPHORE``
-- ``SEMAPHORE_BUILD_NUMBER``
+- ``SEMAPHORE_EXECUTABLE_UUID``
+- ``SEMAPHORE_JOB_UUID``
+- ``SEMAPHORE_BRANCH_ID``
 - ``BRANCH_NAME``
-- ``PULL_REQUEST_NUMBER``
+
+2.0
+~~~
+
+::
+
+    passenv = SEMAPHORE SEMAPHORE_WORKFLOW_ID SEMAPHORE_JOB_ID SEMAPHORE_GIT_PR_NUMBER BRANCH_NAME
+
+All variables:
+
+- ``SEMAPHORE``
+- ``SEMAPHORE_WORKFLOW_ID``
+- ``SEMAPHORE_JOB_ID``
+- ``SEMAPHORE_GIT_PR_NUMBER``
+- ``BRANCH_NAME``
 
 .. _tox: https://tox.readthedocs.io/en/latest/

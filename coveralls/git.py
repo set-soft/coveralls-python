@@ -9,16 +9,16 @@ log = logging.getLogger('coveralls.git')
 
 
 def run_command(*args):
-    cmd = subprocess.Popen(list(args), stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE)
-    stdout, stderr = cmd.communicate()
+    with subprocess.Popen(list(args), stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE) as cmd:
+        stdout, stderr = cmd.communicate()
 
-    if cmd.returncode != 0:
-        raise CoverallsException(
-            'command return code {}, STDOUT: "{}"\nSTDERR: "{}"'.format(
-                cmd.returncode, stdout, stderr))
+        if cmd.returncode != 0:
+            raise CoverallsException(
+                'command return code {}, STDOUT: "{}"\nSTDERR: "{}"'.format(
+                    cmd.returncode, stdout, stderr))
 
-    return stdout.decode().strip()
+        return stdout.decode().strip()
 
 
 def gitlog(fmt):
@@ -32,7 +32,10 @@ def git_branch():
     branch = None
     if os.environ.get('GITHUB_ACTIONS'):
         github_ref = os.environ.get('GITHUB_REF')
-        if github_ref.startswith('refs/heads/'):
+        if (
+            github_ref.startswith('refs/heads/')
+            or github_ref.startswith('refs/tags/')
+        ):
             # E.g. in push events.
             branch = github_ref.split('/', 2)[-1]
         else:

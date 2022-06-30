@@ -1,7 +1,8 @@
 import json
 import os
+from unittest import mock
 
-import mock
+import pytest
 import responses
 
 import coveralls.cli
@@ -9,6 +10,10 @@ from coveralls.exception import CoverallsException
 
 
 EXC = CoverallsException('bad stuff happened')
+
+
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+EXAMPLE_DIR = os.path.join(BASE_DIR, 'example')
 
 
 def req_json(request):
@@ -77,11 +82,29 @@ def test_finish_exception(mock_log):
     }
     msg = 'Parallel finish failed: Mocked'
 
-    try:
+    with pytest.raises(SystemExit):
         coveralls.cli.main(argv=['--finish'])
-        assert 0 == 1  # Should never reach this line
-    except SystemExit:
-        pass
+
+    mock_log.assert_has_calls([mock.call(CoverallsException(msg))])
+    assert len(responses.calls) == 1
+    assert req_json(responses.calls[0].request) == expected_json
+
+
+@mock.patch.dict(os.environ, {'TRAVIS': 'True'}, clear=True)
+@mock.patch.object(coveralls.cli.log, 'exception')
+@responses.activate
+def test_finish_exception_without_error(mock_log):
+    responses.add(responses.POST, 'https://coveralls.io/webhook',
+                  json={}, status=200)
+    expected_json = {
+        'payload': {
+            'status': 'done'
+        }
+    }
+    msg = 'Parallel finish failed'
+
+    with pytest.raises(SystemExit):
+        coveralls.cli.main(argv=['--finish'])
 
     mock_log.assert_has_calls([mock.call(CoverallsException(msg))])
     assert len(responses.calls) == 1
@@ -104,7 +127,9 @@ def test_real(mock_wear, mock_log):
 def test_rcfile(mock_coveralls):
     coveralls.cli.main(argv=['--rcfile=coveragerc'])
     mock_coveralls.assert_called_with(True, config_file='coveragerc',
-                                      service_name=None)
+                                      service_name=None,
+                                      base_dir='',
+                                      src_dir='')
 
 
 @mock.patch.dict(os.environ, {}, clear=True)
@@ -112,18 +137,17 @@ def test_rcfile(mock_coveralls):
 def test_service_name(mock_coveralls):
     coveralls.cli.main(argv=['--service=travis-pro'])
     mock_coveralls.assert_called_with(True, config_file='.coveragerc',
-                                      service_name='travis-pro')
+                                      service_name='travis-pro',
+                                      base_dir='',
+                                      src_dir='')
 
 
 @mock.patch.object(coveralls.cli.log, 'exception')
 @mock.patch.object(coveralls.Coveralls, 'wear', side_effect=EXC)
 @mock.patch.dict(os.environ, {'TRAVIS': 'True'}, clear=True)
 def test_exception(_mock_coveralls, mock_log):
-    try:
+    with pytest.raises(SystemExit):
         coveralls.cli.main(argv=[])
-        assert 0 == 1  # Should never reach this line
-    except SystemExit:
-        pass
 
     mock_log.assert_has_calls([mock.call(EXC)])
 
@@ -142,3 +166,30 @@ def test_save_report_to_file_no_token(mock_coveralls):
     """Check save_report api usage when token is not set."""
     coveralls.cli.main(argv=['--output=test.log'])
     mock_coveralls.assert_called_with('test.log')
+
+
+@mock.patch.object(coveralls.Coveralls, 'submit_report')
+@mock.patch.dict(os.environ, {'TRAVIS': 'True'}, clear=True)
+def test_submit(mock_submit):
+    json_file = os.path.join(EXAMPLE_DIR, 'example.json')
+    coveralls.cli.main(argv=['--submit=' + json_file])
+    with open(json_file) as f:
+        mock_submit.assert_called_with(f.read())
+
+
+@mock.patch('coveralls.cli.Coveralls')
+def test_base_dir_arg(mock_coveralls):
+    coveralls.cli.main(argv=['--basedir=foo'])
+    mock_coveralls.assert_called_with(True, config_file='.coveragerc',
+                                      service_name=None,
+                                      base_dir='foo',
+                                      src_dir='')
+
+
+@mock.patch('coveralls.cli.Coveralls')
+def test_src_dir_arg(mock_coveralls):
+    coveralls.cli.main(argv=['--srcdir=foo'])
+    mock_coveralls.assert_called_with(True, config_file='.coveragerc',
+                                      service_name=None,
+                                      base_dir='',
+                                      src_dir='foo')

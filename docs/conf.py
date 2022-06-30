@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from coveralls import __version__
 
 
@@ -17,8 +16,8 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 project = 'coveralls-python'
-globals()['copyright'] = '2013, coveralls-clients'
-author = 'coveralls-clients'
+globals()['copyright'] = '2013, TheKevJames'
+author = 'TheKevJames'
 
 version = __version__
 release = __version__

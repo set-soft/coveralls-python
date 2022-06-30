@@ -1,11 +1,10 @@
-# pylint: disable=no-self-use
 import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import coverage
-import mock
 import pytest
 
 import coveralls
@@ -33,46 +32,46 @@ class WearTest(unittest.TestCase):
         assert result == EXPECTED
 
     def test_merge(self, _mock_requests):
-        coverage_file = tempfile.NamedTemporaryFile()
-        coverage_file.write(
-            b'{"source_files": [{"name": "foobar", "coverage": []}]}')
-        coverage_file.seek(0)
+        with tempfile.NamedTemporaryFile() as coverage_file:
+            coverage_file.write(
+                b'{"source_files": [{"name": "foobar", "coverage": []}]}')
+            coverage_file.seek(0)
 
-        api = coveralls.Coveralls(repo_token='xxx')
-        api.merge(coverage_file.name)
-        result = api.create_report()
+            api = coveralls.Coveralls(repo_token='xxx')
+            api.merge(coverage_file.name)
+            result = api.create_report()
 
-        source_files = json.loads(result)['source_files']
-        assert source_files == [{'name': 'foobar', 'coverage': []}]
+            source_files = json.loads(result)['source_files']
+            assert source_files == [{'name': 'foobar', 'coverage': []}]
 
     def test_merge_empty_data(self, _mock_requests):
-        coverage_file = tempfile.NamedTemporaryFile()
-        coverage_file.write(b'{}')
-        coverage_file.seek(0)
+        with tempfile.NamedTemporaryFile() as coverage_file:
+            coverage_file.write(b'{}')
+            coverage_file.seek(0)
 
-        api = coveralls.Coveralls(repo_token='xxx')
-        api.merge(coverage_file.name)
-        result = api.create_report()
+            api = coveralls.Coveralls(repo_token='xxx')
+            api.merge(coverage_file.name)
+            result = api.create_report()
 
-        source_files = json.loads(result)['source_files']
-        assert source_files == []
+            source_files = json.loads(result)['source_files']
+            assert source_files == []
 
     @mock.patch.object(log, 'warning')
     def test_merge_invalid_data(self, mock_logger, _mock_requests):
-        coverage_file = tempfile.NamedTemporaryFile()
-        coverage_file.write(b'{"random": "stuff"}')
-        coverage_file.seek(0)
+        with tempfile.NamedTemporaryFile() as coverage_file:
+            coverage_file.write(b'{"random": "stuff"}')
+            coverage_file.seek(0)
 
-        api = coveralls.Coveralls(repo_token='xxx')
-        api.merge(coverage_file.name)
-        result = api.create_report()
+            api = coveralls.Coveralls(repo_token='xxx')
+            api.merge(coverage_file.name)
+            result = api.create_report()
 
-        source_files = json.loads(result)['source_files']
-        assert source_files == []
+            source_files = json.loads(result)['source_files']
+            assert source_files == []
 
-        mock_logger.assert_called_once_with('No data to be merged; does the '
-                                            'json file contain "source_files" '
-                                            'data?')
+            mock_logger.assert_called_once_with(
+                'No data to be merged; does the json file contain '
+                '"source_files" data?')
 
     def test_dry_run(self, mock_requests):
         mock_requests.post.return_value.json.return_value = EXPECTED
@@ -120,3 +119,30 @@ class WearTest(unittest.TestCase):
         coveralls.Coveralls(repo_token='xxx').wear(dry_run=False)
         mock_requests.post.assert_called_once_with(
             'https://coveralls.io/api/v1/jobs', files=mock.ANY, verify=True)
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_submit_report_resubmission(self, mock_requests):
+        # This would trigger the resubmission condition
+        mock_requests.post.return_value.status_code = 422
+        result = coveralls.Coveralls(repo_token='xxx').wear(dry_run=False)
+
+        # A new service_job_id is created
+        mock_requests.post.return_value.json.return_value = EXPECTED
+        result = coveralls.Coveralls(repo_token='xxx').wear(dry_run=False)
+
+        assert result == EXPECTED
+
+    @mock.patch.dict(
+        os.environ,
+        {'GITHUB_REPOSITORY': 'test/repo'},
+        clear=True)
+    def test_submit_report_resubmission_github(self, mock_requests):
+        # This would trigger the resubmission condition, for github
+        mock_requests.post.return_value.status_code = 422
+        result = coveralls.Coveralls(repo_token='xxx').wear(dry_run=False)
+
+        # A new service_job_id is created, null for github
+        mock_requests.post.return_value.json.return_value = EXPECTED
+        result = coveralls.Coveralls(repo_token='xxx').wear(dry_run=False)
+
+        assert result == EXPECTED

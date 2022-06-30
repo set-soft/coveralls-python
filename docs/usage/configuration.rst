@@ -3,13 +3,27 @@
 Configuration
 =============
 
-coveralls-python often works without any outside configuration by examining the environment it is being run in. Special handling has been added for AppVeyor, BuildKite, CircleCI, Github Actions, Jenkins, and TravisCI to make coveralls-python as close to "plug and play" as possible.
+coveralls-python often works without any outside configuration by examining the
+environment it is being run in. Special handling has been added for AppVeyor,
+BuildKite, CircleCI, Github Actions, Jenkins, and TravisCI to make
+coveralls-python as close to "plug and play" as possible. It should be useable
+in any other CI system as well, but may need some configuration!
 
-Most often, you will simply need to run coveralls-python with no additional options after you have run your coverage suite::
+In cases where you do need to modify the configuration, we obey a very strict
+precedence order where the **latest value is used**:
+
+* first, the CI environment will be loaded
+* second, any environment variables will be loaded (eg. those which begin with
+  ``COVERALLS_``
+* third, the config file is loaded (eg. ``./..coveralls.yml``)
+* finally, any command line flags are evaluated
+
+Most often, you will simply need to run coveralls-python with no additional
+options after you have run your coverage suite::
 
     coveralls
 
-If you have placed your ``.coveragerc`` in a non-standard location, you can run::
+If you have placed your ``.coveragerc`` in a non-standard location (ie. other than ``./.coveragerc``), you can run::
 
     coveralls --rcfile=/path/to/coveragerc
 
@@ -21,7 +35,7 @@ If you would like to override the service name (auto-discovered on most CI syste
 
 If you are interested in merging the coverage results between multiple languages/projects, see our :ref:`multi-language <multilang>` documentation.
 
-If coveralls-python is being run on TravisCI, it will automatically set the token for communication with coveralls.io. Otherwise, you should set the environment variable ``COVERALLS_REPO_TOKEN``, which can be found on the dashboard for your project in coveralls.io::
+If coveralls-python is being run on TravisCI or on GitHub Actions, it will automatically set the token for communication with coveralls.io. Otherwise, you should set the environment variable ``COVERALLS_REPO_TOKEN``, which can be found on the dashboard for your project in coveralls.io::
 
     COVERALLS_REPO_TOKEN=mV2Jajb8y3c6AFlcVNagHO20fiZNkXPVy coveralls
 
@@ -54,17 +68,33 @@ Sample ``.coveralls.yml`` file::
     parallel: true
     coveralls_host: https://coveralls.aperture.com
 
-Github Actions Gotcha
----------------------
+Github Actions support
+----------------------
 
-Coveralls natively supports jobs running on Github Actions. You can directly pass the default-provided secret GITHUB_TOKEN::
+Coveralls natively supports jobs running on Github Actions. You can directly
+pass the default-provided secret GITHUB_TOKEN::
 
     env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     run: |
-        coveralls
+        coveralls --service=github
 
-For parallel builds, you have to add a final step to let coveralls know the parallel build is finished. You also have to set COVERALLS_FLAG_NAME to something unique to the specific step, so re-runs of the same job don't keep piling up builds::
+Passing a coveralls.io token via the ``COVERALLS_REPO_TOKEN`` environment variable
+(or via the ``repo_token`` parameter in the config file) is not needed for
+Github Actions.
+
+Sometimes Github Actions gets a little picky about the service name which needs
+to be used in various cases. If you run into issues, try setting the
+``COVERALLS_SERVICE_NAME`` explicitly to either ``github`` or
+``github-actions``. It seems to be the case that you should use the
+``--service=github`` value if you are also planning to use the ``GITHUB_TOKEN``
+env var, and ``github-actions`` (which is the default) in any other case, but
+we've have conflicting reports on this: YMMV! See
+`#452 <https://github.com/TheKevJames/coveralls-python/issues/252>`_ for more
+info.
+
+For parallel builds, you have to add a final step to let coveralls.io know the
+parallel build is finished::
 
     jobs:
       test:
@@ -79,21 +109,82 @@ For parallel builds, you have to add a final step to let coveralls know the para
             uses: actions/checkout@v2
           - name: Test
             run: ./run_tests.sh ${{ matrix.test-name }}
-          - name: Upload Coverage
-            run: coveralls
+          - name: Upload coverage data to coveralls.io
+            run: coveralls --service=github
             env:
               GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               COVERALLS_FLAG_NAME: ${{ matrix.test-name }}
               COVERALLS_PARALLEL: true
       coveralls:
-        name: Finish Coveralls
+        name: Indicate completion to coveralls.io
         needs: test
         runs-on: ubuntu-latest
         container: python:3-slim
         steps:
+        - name: Install coveralls
+          run: pip3 install --upgrade coveralls
         - name: Finished
-          run: |
-            pip3 install --upgrade coveralls
-            coveralls --finish
+          run: coveralls --service=github --finish
           env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+The ``COVERALLS_FLAG_NAME`` environment variable (or the ``flag_name`` parameter
+in the config file) is optional and can be used to better identify each job
+on coveralls.io. It does not need to be unique across the parallel jobs.
+
+Azure Pipelines support
+-----------------------
+
+Coveralls does not yet support Azure Pipelines, but you can make things work by
+impersonating another CI system such as CircleCI. For example, you can set this
+up by using the following script at the end of your test pipeline::
+
+    - script: |
+        pip install coveralls
+        export CIRCLE_BRANCH=$BUILD_SOURCEBRANCH
+        coveralls
+      displayName: 'coveralls'
+      env:
+        CIRCLECI: 1
+        CIRCLE_BUILD_NUM: $(Build.BuildNumber)
+        COVERALLS_REPO_TOKEN: $(coveralls_repo_token)
+
+Note that you will also need to use the Azure Pipelines web UI to add the
+``coveralls_repo_token`` variable to this pipeline with your repo token (which
+you can copy from the coveralls.io website).
+
+As per `#245 <https://github.com/TheKevJames/coveralls-python/issues/245>`_,
+our users suggest leaving "keep this value secret" unchecked -- this may be
+secure enough as-is, in that a user making a PR cannot access this variable.
+
+Other CI systems
+----------------
+
+As specified in the Coveralls `official docs
+<https://docs.coveralls.io/supported-ci-services>`
+other CI systems can be supported if the following environment variables are
+defined::
+
+    CI_NAME
+        # Name of the CI service being used.
+    CI_BUILD_NUMBER
+        # The number assigned to the build by your CI service.
+    CI_BUILD_URL
+        # URL to a webpage showing the build information/logs.
+    CI_BRANCH
+        # For pull requests this is the name of the branch being targeted,
+        # otherwise it corresponds to the name of the current branch or tag.
+    CI_JOB_ID (optional)
+        # For parallel builds, the number assigned to each job comprising the build.
+        # When missing, Coveralls will assign an incrementing integer (1, 2, 3 ...).
+        # This value should not change between multiple runs of the build.
+    CI_PULL_REQUEST (optional)
+        # If given, corresponds to the number of the pull request, as specified
+        # in the supported repository hosting service (GitHub, GitLab, etc).
+        # This variable expects a value defined as an integer, e.g.:
+        #   CI_PULL_REQUEST=42             (recommended)
+        # However, for flexibility, any single line string ending with the same
+        # integer value can also be used (such as the pull request URL or
+        # relative path), e.g.:
+        #   CI_PULL_REQUEST='myuser/myrepo/pull/42'
+        #   CI_PULL_REQUEST='https://github.com/myuser/myrepo/pull/42'

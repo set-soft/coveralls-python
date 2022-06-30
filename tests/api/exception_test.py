@@ -1,10 +1,10 @@
-# pylint: disable=no-self-use
 import logging
 import unittest
 
 import pytest
 
 from coveralls.exception import CoverallsException
+
 
 class CoverallsExceptionTest(unittest.TestCase):
 

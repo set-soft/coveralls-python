@@ -2,7 +2,9 @@ import codecs
 import json
 import logging
 import os
+import random
 import re
+import sys
 
 import coverage
 import requests
@@ -14,8 +16,11 @@ from .reporter import CoverallReporter
 
 log = logging.getLogger('coveralls.api')
 
+NUMBER_REGEX = re.compile(r'(\d+)$', re.IGNORECASE)
+
 
 class Coveralls:
+    # pylint: disable=too-many-public-methods
     config_filename = '.coveralls.yml'
 
     def __init__(self, token_required=True, service_name=None, **kwargs):
@@ -38,36 +43,45 @@ class Coveralls:
         self._data = None
         self._coveralls_host = 'https://coveralls.io/'
         self._token_required = token_required
+        self.config = {}
 
-        self.config = self.load_config_from_file()
-        self.config.update(kwargs)
-        if service_name:
-            self.config['service_name'] = service_name
-        if self.config.get('coveralls_host'):
-            self._coveralls_host = self.config['coveralls_host']
-            del self.config['coveralls_host']
-
-        self.load_config_from_environment()
-
-        name, job, number, pr = self.load_config_from_ci_environment()
-        self.config['service_name'] = self.config.get('service_name', name)
-        if job:
-            self.config['service_job_id'] = job
-        if number:
-            self.config['service_number'] = number
-        if pr:
-            self.config['service_pull_request'] = pr
-
+        self.load_config(kwargs, service_name)
         self.ensure_token()
 
     def ensure_token(self):
         if self.config.get('repo_token') or not self._token_required:
             return
 
+        if os.environ.get('GITHUB_ACTIONS'):
+            raise CoverallsException(
+                'Running on Github Actions but GITHUB_TOKEN is not set. '
+                'Add "env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" to '
+                'your step config.')
+
         raise CoverallsException(
             'Not on TravisCI. You have to provide either repo_token in {} or '
             'set the COVERALLS_REPO_TOKEN env var.'.format(
                 self.config_filename))
+
+    def load_config(self, kwargs, service_name):
+        """
+        Loads all coveralls configuration in the following precedence order.
+
+            1. automatic CI configuration
+            2. COVERALLS_* env vars
+            3. .coveralls.yml config file
+            4. CLI flags
+        """
+        self.load_config_from_ci_environment()
+        self.load_config_from_environment()
+        self.load_config_from_file()
+        self.config.update(kwargs)
+        if self.config.get('coveralls_host'):
+            # N.B. users can set --coveralls-host via CLI, but we don't keep
+            # that in the config
+            self._coveralls_host = self.config.pop('coveralls_host')
+        if service_name:
+            self.config['service_name'] = service_name
 
     @staticmethod
     def load_config_from_appveyor():
@@ -83,28 +97,26 @@ class Coveralls:
 
     @staticmethod
     def load_config_from_circle():
-        pr = os.environ.get('CI_PULL_REQUEST', '').split('/')[-1] or None
-        number = os.environ.get('CIRCLE_WORKFLOW_ID')
-        return 'circle-ci', os.environ.get('CIRCLE_BUILD_NUM'), number, pr
+        number = (os.environ.get('CIRCLE_WORKFLOW_ID')
+                  or os.environ.get('CIRCLE_BUILD_NUM'))
+        pr = (os.environ.get('CI_PULL_REQUEST') or '').split('/')[-1] or None
+        job = os.environ.get('CIRCLE_NODE_INDEX')
+        return 'circleci', job, number, pr
 
     def load_config_from_github(self):
-        service = 'github'
-        if self.config.get('repo_token'):
-            service = 'github-actions'
-        else:
-            gh_token = os.environ.get('GITHUB_TOKEN')
-            if not gh_token:
-                raise CoverallsException(
-                    'Running on Github Actions but GITHUB_TOKEN is not set. '
-                    'Add "env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" to '
-                    'your step config.')
-            self.config['repo_token'] = gh_token
+        # Github tokens and standard Coveralls tokens are almost but not quite
+        # the same -- forceibly using Github's flow seems to be more stable
+        self.config['repo_token'] = os.environ.get('GITHUB_TOKEN')
 
-        number = os.environ.get('GITHUB_RUN_ID')
         pr = None
         if os.environ.get('GITHUB_REF', '').startswith('refs/pull/'):
             pr = os.environ.get('GITHUB_REF', '//').split('/')[2]
-        return service, None, number, pr
+
+        # N.B. some users require this to be 'github' and some require it to
+        # be 'github-actions'. Defaulting to 'github-actions' as it seems more
+        # common -- users can specify the service name manually to override
+        # this.
+        return 'github-actions', None, os.environ.get('GITHUB_RUN_ID'), pr
 
     @staticmethod
     def load_config_from_jenkins():
@@ -118,15 +130,54 @@ class Coveralls:
 
     @staticmethod
     def load_config_from_semaphore():
-        job = os.environ.get('SEMAPHORE_BUILD_NUMBER')
-        pr = os.environ.get('PULL_REQUEST_NUMBER')
-        return 'semaphore-ci', job, None, pr
+        job = (
+            os.environ.get('SEMAPHORE_JOB_UUID')  # Classic
+            or os.environ.get('SEMAPHORE_JOB_ID')  # 2.0
+        )
+        number = (
+            os.environ.get('SEMAPHORE_EXECUTABLE_UUID')  # Classic
+            or os.environ.get('SEMAPHORE_WORKFLOW_ID')  # 2.0
+        )
+        pr = (
+            os.environ.get('SEMAPHORE_BRANCH_ID')  # Classic
+            or os.environ.get('SEMAPHORE_GIT_PR_NUMBER')  # 2.0
+        )
+        return 'semaphore-ci', job, number, pr
 
     @staticmethod
     def load_config_from_unknown():
         return 'coveralls-python', None, None, None
 
+    def load_config_from_generic_ci_environment(self):
+        # Inspired by the official client:
+        # coveralls-ruby in lib/coveralls/configuration.rb
+        # (set_standard_service_params_for_generic_ci)
+
+        # The meaning of each env var is clarified in:
+        # https://github.com/lemurheavy/coveralls-public/issues/1558
+
+        config = {
+            'service_name': os.environ.get('CI_NAME'),
+            'service_number': os.environ.get('CI_BUILD_NUMBER'),
+            'service_build_url': os.environ.get('CI_BUILD_URL'),
+            'service_job_id': os.environ.get('CI_JOB_ID'),
+            'service_branch': os.environ.get('CI_BRANCH'),
+        }
+
+        pr_match = NUMBER_REGEX.findall(os.environ.get('CI_PULL_REQUEST', ''))
+        if pr_match:
+            config['service_pull_request'] = pr_match[-1]
+
+        non_empty = {key: value for key, value in config.items() if value}
+        self.config.update(non_empty)
+
     def load_config_from_ci_environment(self):
+        # As defined at the bottom of
+        # https://docs.coveralls.io/supported-ci-services
+        # there are a few env vars that should support any arbitrary CI.
+        # We load them first and allow more specific vars to overwrite
+        self.load_config_from_generic_ci_environment()
+
         if os.environ.get('APPVEYOR'):
             name, job, number, pr = self.load_config_from_appveyor()
         elif os.environ.get('BUILDKITE'):
@@ -134,6 +185,9 @@ class Coveralls:
         elif os.environ.get('CIRCLECI'):
             name, job, number, pr = self.load_config_from_circle()
         elif os.environ.get('GITHUB_ACTIONS'):
+            # N.B. Github Actions fails if this is not set even when null.
+            # Other services fail if this is set to null. Sigh.
+            self.config['service_job_id'] = None
             name, job, number, pr = self.load_config_from_github()
         elif os.environ.get('JENKINS_HOME'):
             name, job, number, pr = self.load_config_from_jenkins()
@@ -144,7 +198,14 @@ class Coveralls:
             name, job, number, pr = self.load_config_from_semaphore()
         else:
             name, job, number, pr = self.load_config_from_unknown()
-        return (name, job, number, pr)
+
+        self.config.setdefault('service_name', name)
+        if job:
+            self.config['service_job_id'] = job
+        if number:
+            self.config['service_number'] = number
+        if pr:
+            self.config['service_pull_request'] = pr
 
     def load_config_from_environment(self):
         coveralls_host = os.environ.get('COVERALLS_HOST')
@@ -155,37 +216,33 @@ class Coveralls:
         if parallel:
             self.config['parallel'] = parallel
 
-        repo_token = os.environ.get('COVERALLS_REPO_TOKEN')
-        if repo_token:
-            self.config['repo_token'] = repo_token
-
-        service_name = os.environ.get('COVERALLS_SERVICE_NAME')
-        if service_name:
-            self.config['service_name'] = service_name
-
-        flag_name = os.environ.get('COVERALLS_FLAG_NAME')
-        if flag_name:
-            self.config['flag_name'] = flag_name
-
-        number = os.environ.get('COVERALLS_SERVICE_JOB_NUMBER')
-        if number:
-            self.config['service_number'] = number
+        fields = {
+            'COVERALLS_FLAG_NAME': 'flag_name',
+            'COVERALLS_REPO_TOKEN': 'repo_token',
+            'COVERALLS_SERVICE_JOB_ID': 'service_job_id',
+            'COVERALLS_SERVICE_JOB_NUMBER': 'service_job_number',
+            'COVERALLS_SERVICE_NAME': 'service_name',
+            'COVERALLS_SERVICE_NUMBER': 'service_number',
+        }
+        for var, key in fields.items():
+            value = os.environ.get(var)
+            if value:
+                self.config[key] = value
 
     def load_config_from_file(self):
         try:
-            with open(os.path.join(os.getcwd(),
-                                   self.config_filename)) as config:
+            fname = os.path.join(os.getcwd(), self.config_filename)
+
+            with open(fname) as config:
                 try:
                     import yaml  # pylint: disable=import-outside-toplevel
-                    return yaml.safe_load(config)
+                    self.config.update(yaml.safe_load(config))
                 except ImportError:
                     log.warning('PyYAML is not installed, skipping %s.',
                                 self.config_filename)
         except OSError:
             log.debug('Missing %s file. Using only env variables.',
                       self.config_filename)
-
-        return {}
 
     def merge(self, path):
         reader = codecs.getreader('utf-8')
@@ -197,16 +254,44 @@ class Coveralls:
         json_string = self.create_report()
         if dry_run:
             return {}
+        return self.submit_report(json_string)
 
+    def submit_report(self, json_string):
         endpoint = '{}/api/v1/jobs'.format(self._coveralls_host.rstrip('/'))
         verify = not bool(os.environ.get('COVERALLS_SKIP_SSL_VERIFY'))
         response = requests.post(endpoint, files={'json_file': json_string},
                                  verify=verify)
+
+        # check and adjust/resubmit if submission looks like it failed due to
+        # resubmission (non-unique)
+        if response.status_code == 422:
+            # attach a random value to ensure uniqueness
+            # TODO: an auto-incrementing integer might be easier to reason
+            # about if we could fetch the previous value
+            # N.B. Github Actions fails if this is not set to null.
+            # Other services fail if this is set to null. Sigh x2.
+            if os.environ.get('GITHUB_REPOSITORY'):
+                new_id = None
+            else:
+                new_id = '{}-{}'.format(
+                    self.config.get('service_job_id', 42),
+                    random.randint(0, sys.maxsize))
+            print('resubmitting with id {}'.format(new_id))
+
+            self.config['service_job_id'] = new_id
+            self._data = None  # force create_report to use updated data
+            json_string = self.create_report()
+
+            response = requests.post(endpoint,
+                                     files={'json_file': json_string},
+                                     verify=verify)
+
         try:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            raise CoverallsException('Could not submit coverage: {}'.format(e))
+            raise CoverallsException(
+                'Could not submit coverage: {}'.format(e)) from e
 
     # https://docs.coveralls.io/parallel-build-webhook
     def parallel_finish(self):
@@ -230,7 +315,8 @@ class Coveralls:
             response.raise_for_status()
             response = response.json()
         except Exception as e:
-            raise CoverallsException('Parallel finish failed: {}'.format(e))
+            raise CoverallsException(
+                'Parallel finish failed: {}'.format(e)) from e
 
         if 'error' in response:
             e = response['error']
@@ -315,7 +401,10 @@ class Coveralls:
         workman.load()
         workman.get_data()
 
-        return CoverallReporter(workman, workman.config).coverage
+        base_dir = self.config.get('base_dir') or ''
+        src_dir = self.config.get('src_dir') or ''
+        return CoverallReporter(workman, workman.config, base_dir,
+                                src_dir).coverage
 
     @staticmethod
     def debug_bad_encoding(data):

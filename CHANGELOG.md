@@ -1,3 +1,99 @@
+<a name="3.3.1"></a>
+## 3.3.1 (2021-11-11)
+
+#### Bug Fixes
+
+* correctly support parallel execution on CircleCI (#336) ([2610885a](2610885a))
+
+#### Internal
+
+* exclude a few incompatible `coverage` versions (#337)
+
+`coverage` versions v6.0.0 through v6.1.1 exhibited some incompatibilies with
+`coveralls`; we've updated our version compatibility ranges to exclude those
+versions.
+
+<a name="3.3.0"></a>
+## 3.3.0 (2021-11-04)
+
+#### Features
+
+* **cli:**  add --srcdir option (#306) ([4120c540](4120c540))
+* **deps:**  add support for coverage v6.x (#330) ([372443dc](372443dc), closes [#326](326))
+
+Note this implicitly improves support for Python 3.10, as coverage v6.x includes some fixes for v3.10 of Python.
+
+#### Bug Fixes
+
+* **env:**  fixup handling of default env service values (#314) ([1a0fd9b3](1a0fd9b3), closes [#303](303))
+
+This solves some edge cases around duplicated / unmerged coverage results in parallel runs.
+
+<a name="3.2.0"></a>
+## 3.2.0 (2021-07-20)
+
+#### Features
+
+* **api:**  support officially documented generic CI env vars (#300) ([ca1c6a47](ca1c6a47))
+
+<a name="3.1.0"></a>
+## 3.1.0 (2021-05-24)
+
+#### Features
+
+* **cli**:  add `--basedir` and `--submit` options (#287) ([165a5cd1](165a5cd1))
+* **github:**  push coverage info from tags (#284) ([0a49bd28](0a49bd28))
+
+<a name="3.0.1"></a>
+## 3.0.1 (2021-03-02)
+
+#### Bug Fixes
+
+* **github:**  send null job_id to fix 422 during resubmission (#269) ([54be7545](54be7545))
+
+<a name="3.0.0"></a>
+## 3.0.0 (2021-01-12)
+
+#### Features (BREAKING)
+
+* **config:**  reorder configuration precedence (#249) ([f4faa92d](f4faa92d))
+
+We have *reversed* the order in which configurations are parsed. This means we
+are now following the following precedence (latest configured value is used):
+
+1. CI Config
+2. COVERALLS_* env vars
+3. .coveralls.yml file
+4. CLI flags
+
+If you have the same fields set in multiple of the above locations, please
+double-check them before upgrading to v3.
+
+The motivation for this change is allowing users to selectively fix values
+which may be automatically set to the wrong value. For example, Github Actions
+users may find that Github Actions expects you to use a different "service name"
+in various different cases. Now you can run, for example:
+
+   coveralls --service=github
+
+In places where you need to override the default (which is `github-actions`).
+
+#### Bug Fixes
+
+* **github:**  send null job_id to fix 422 ([05b66aa0](05b66aa0))
+* **api:**  fixup retries for services without job IDs ([6ebdc5e2](6ebdc5e2))
+
+<a name="2.2.0"></a>
+## 2.2.0 (2020-11-20)
+
+#### Features
+
+* **api:**  add workaround allowing job resubmission (#241) ([0de0c019](0de0c019))
+
+#### Bug Fixes
+
+* **integrations:**  fixup environment detection for Semaphore CI (#236) ([ad4f8fa8](ad4f8fa8))
+
 <a name="2.1.2"></a>
 ## 2.1.2 (2020-08-12)
 
