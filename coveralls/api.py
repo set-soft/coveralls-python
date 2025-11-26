@@ -2,9 +2,7 @@ import codecs
 import json
 import logging
 import os
-import random
 import re
-import sys
 
 import coverage
 import requests
@@ -54,14 +52,15 @@ class Coveralls:
 
         if os.environ.get('GITHUB_ACTIONS'):
             raise CoverallsException(
-                'Running on Github Actions but GITHUB_TOKEN is not set. '
-                'Add "env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" to '
-                'your step config.')
+                'Running on Github Actions but GITHUB_TOKEN is not set. Add '
+                '"env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" to your '
+                'step config.',
+            )
 
         raise CoverallsException(
-            'Not on TravisCI. You have to provide either repo_token in {} or '
-            'set the COVERALLS_REPO_TOKEN env var.'.format(
-                self.config_filename))
+            'Not on TravisCI. You have to provide either repo_token in '
+            f'{self.config_filename} or set the COVERALLS_REPO_TOKEN env var.',
+        )
 
     def load_config(self, kwargs, service_name):
         """
@@ -97,13 +96,17 @@ class Coveralls:
 
     @staticmethod
     def load_config_from_circle():
-        number = (os.environ.get('CIRCLE_WORKFLOW_ID')
-                  or os.environ.get('CIRCLE_BUILD_NUM'))
+        number = (
+            os.environ.get('CIRCLE_WORKFLOW_ID')
+            or os.environ.get('CIRCLE_BUILD_NUM')
+        )
         pr = (os.environ.get('CI_PULL_REQUEST') or '').split('/')[-1] or None
         job = os.environ.get('CIRCLE_NODE_INDEX')
         return 'circleci', job, number, pr
 
     def load_config_from_github(self):
+        # See https://github.com/lemurheavy/coveralls-public/issues/1710
+
         # Github tokens and standard Coveralls tokens are almost but not quite
         # the same -- forceibly using Github's flow seems to be more stable
         self.config['repo_token'] = os.environ.get('GITHUB_TOKEN')
@@ -112,11 +115,24 @@ class Coveralls:
         if os.environ.get('GITHUB_REF', '').startswith('refs/pull/'):
             pr = os.environ.get('GITHUB_REF', '//').split('/')[2]
 
-        # N.B. some users require this to be 'github' and some require it to
-        # be 'github-actions'. Defaulting to 'github-actions' as it seems more
-        # common -- users can specify the service name manually to override
-        # this.
-        return 'github-actions', None, os.environ.get('GITHUB_RUN_ID'), pr
+        # TODO: coveralls suggests using the RUN_ID for both these values:
+        # https://github.com/lemurheavy/coveralls-public/issues/1710#issuecomment-1539203555
+        # However, they also suggest following this successful config approach:
+        # https://github.com/lemurheavy/coveralls-public/issues/1710#issuecomment-1913696022
+        # which instead sets:
+        # COVERALLS_SERVICE_JOB_ID: $GITHUB_RUN_ID
+        # COVERALLS_SERVICE_NUMBER: $GITHUB_WORKFLOW-$GITHUB_RUN_NUMBER
+        # should we do the same?
+        job = os.environ.get('GITHUB_RUN_ID')
+        number = os.environ.get('GITHUB_RUN_ID')
+
+        # N.B. per Coveralls:
+        # > When you want to identify the repo at Coveralls by its
+        # > GITHUB_TOKEN, you should choose github, and when you want to
+        # > identify it by its Coveralls Repo Token, you should choose
+        # > github-action.
+        # https://github.com/lemurheavy/coveralls-public/issues/1710#issuecomment-1539203555
+        return 'github', job, number, pr
 
     @staticmethod
     def load_config_from_jenkins():
@@ -172,6 +188,7 @@ class Coveralls:
         self.config.update(non_empty)
 
     def load_config_from_ci_environment(self):
+        # pylint: disable=too-complex
         # As defined at the bottom of
         # https://docs.coveralls.io/supported-ci-services
         # there are a few env vars that should support any arbitrary CI.
@@ -185,9 +202,6 @@ class Coveralls:
         elif os.environ.get('CIRCLECI'):
             name, job, number, pr = self.load_config_from_circle()
         elif os.environ.get('GITHUB_ACTIONS'):
-            # N.B. Github Actions fails if this is not set even when null.
-            # Other services fail if this is set to null. Sigh.
-            self.config['service_job_id'] = None
             name, job, number, pr = self.load_config_from_github()
         elif os.environ.get('JENKINS_HOME'):
             name, job, number, pr = self.load_config_from_jenkins()
@@ -238,11 +252,15 @@ class Coveralls:
                     import yaml  # pylint: disable=import-outside-toplevel
                     self.config.update(yaml.safe_load(config))
                 except ImportError:
-                    log.warning('PyYAML is not installed, skipping %s.',
-                                self.config_filename)
+                    log.warning(
+                        'PyYAML is not installed, skipping %s.',
+                        self.config_filename,
+                    )
         except OSError:
-            log.debug('Missing %s file. Using only env variables.',
-                      self.config_filename)
+            log.debug(
+                'Missing %s file. Using only env variables.',
+                self.config_filename,
+            )
 
     def merge(self, path):
         reader = codecs.getreader('utf-8')
@@ -257,41 +275,34 @@ class Coveralls:
         return self.submit_report(json_string)
 
     def submit_report(self, json_string):
-        endpoint = '{}/api/v1/jobs'.format(self._coveralls_host.rstrip('/'))
+        endpoint = f'{self._coveralls_host.rstrip("/")}/api/v1/jobs'
         verify = not bool(os.environ.get('COVERALLS_SKIP_SSL_VERIFY'))
-        response = requests.post(endpoint, files={'json_file': json_string},
-                                 verify=verify)
+        response = requests.post(
+            endpoint, files={'json_file': json_string}, verify=verify,
+        )
 
-        # check and adjust/resubmit if submission looks like it failed due to
-        # resubmission (non-unique)
         if response.status_code == 422:
-            # attach a random value to ensure uniqueness
-            # TODO: an auto-incrementing integer might be easier to reason
-            # about if we could fetch the previous value
-            # N.B. Github Actions fails if this is not set to null.
-            # Other services fail if this is set to null. Sigh x2.
-            if os.environ.get('GITHUB_REPOSITORY'):
-                new_id = None
-            else:
-                new_id = '{}-{}'.format(
-                    self.config.get('service_job_id', 42),
-                    random.randint(0, sys.maxsize))
-            print('resubmitting with id {}'.format(new_id))
-
-            self.config['service_job_id'] = new_id
-            self._data = None  # force create_report to use updated data
-            json_string = self.create_report()
-
-            response = requests.post(endpoint,
-                                     files={'json_file': json_string},
-                                     verify=verify)
+            if self.config['service_name'].startswith('github'):
+                print(
+                    'Received 422 submitting job via Github Actions. By '
+                    'default, coveralls-python uses the "github" service '
+                    'name, which requires you to set the $GITHUB_TOKEN '
+                    'environment variable. If you want to use a '
+                    'COVERALLS_REPO_TOKEN instead, please manually override '
+                    '$COVERALLS_SERVICE_NAME to "github-actions". For more '
+                    'info, see https://coveralls-python.readthedocs.io/en'
+                    '/latest/usage/configuration.html#github-actions-support',
+                )
 
         try:
             response.raise_for_status()
-            return response.json()
+            data = response.json()
         except Exception as e:
             raise CoverallsException(
-                'Could not submit coverage: {}'.format(e)) from e
+                f'Could not submit coverage: {e}',
+            ) from e
+
+        return data
 
     # https://docs.coveralls.io/parallel-build-webhook
     def parallel_finish(self):
@@ -308,7 +319,7 @@ class Coveralls:
             # Github Actions only
             payload['repo_name'] = os.environ.get('GITHUB_REPOSITORY')
 
-        endpoint = '{}/webhook'.format(self._coveralls_host.rstrip('/'))
+        endpoint = f'{self._coveralls_host.rstrip("/")}/webhook'
         verify = not bool(os.environ.get('COVERALLS_SKIP_SSL_VERIFY'))
         response = requests.post(endpoint, json=payload, verify=verify)
         try:
@@ -316,11 +327,12 @@ class Coveralls:
             response = response.json()
         except Exception as e:
             raise CoverallsException(
-                'Parallel finish failed: {}'.format(e)) from e
+                f'Parallel finish failed: {e}',
+            ) from e
 
         if 'error' in response:
             e = response['error']
-            raise CoverallsException('Parallel finish failed: {}'.format(e))
+            raise CoverallsException(f'Parallel finish failed: {e}')
 
         if 'done' not in response or not response['done']:
             raise CoverallsException('Parallel finish failed')
@@ -332,27 +344,32 @@ class Coveralls:
         data = self.create_data()
         try:
             json_string = json.dumps(data)
-        except UnicodeDecodeError as e:
-            log.error('ERROR: While preparing JSON:', exc_info=e)
+        except UnicodeDecodeError:
+            log.exception('ERROR: While preparing JSON:')
             self.debug_bad_encoding(data)
             raise
 
-        log_string = re.sub(r'"repo_token": "(.+?)"',
-                            '"repo_token": "[secure]"', json_string)
+        log_string = re.sub(
+            r'"repo_token": "(.+?)"',
+            '"repo_token": "[secure]"',
+            json_string,
+        )
         log.debug(log_string)
         log.debug('==\nReporting %s files\n==\n', len(data['source_files']))
         for source_file in data['source_files']:
-            log.debug('%s - %s/%s', source_file['name'],
-                      sum(filter(None, source_file['coverage'])),
-                      len(source_file['coverage']))
+            log.debug(
+                '%s - %d/%d', source_file['name'],
+                sum(filter(None, source_file['coverage'])),
+                len(source_file['coverage']),
+            )
         return json_string
 
     def save_report(self, file_path):
         """Write coveralls report to file."""
         try:
             report = self.create_report()
-        except coverage.CoverageException as e:
-            log.error('Failure to gather coverage:', exc_info=e)
+        except coverage.CoverageException:
+            log.exception('Failure to gather coverage:')
         else:
             with open(file_path, 'w') as report_file:
                 report_file.write(report)
@@ -390,21 +407,22 @@ class Coveralls:
             if 'source_files' in extra:
                 self._data['source_files'].extend(extra['source_files'])
             else:
-                log.warning('No data to be merged; does the json file contain '
-                            '"source_files" data?')
+                log.warning(
+                    'No data to be merged; does the json file contain '
+                    '"source_files" data?',
+                )
 
         return self._data
 
     def get_coverage(self):
         config_file = self.config.get('config_file', True)
-        workman = coverage.coverage(config_file=config_file)
-        workman.load()
-        workman.get_data()
+        work = coverage.coverage(config_file=config_file)
+        work.load()
+        work.get_data()
 
         base_dir = self.config.get('base_dir') or ''
         src_dir = self.config.get('src_dir') or ''
-        return CoverallReporter(workman, workman.config, base_dir,
-                                src_dir).coverage
+        return CoverallReporter(work, base_dir, src_dir).coverage
 
     @staticmethod
     def debug_bad_encoding(data):
@@ -418,6 +436,8 @@ class Coveralls:
                     at_fault_files.add(source_file_data['name'])
 
         if at_fault_files:
-            log.error('HINT: Following files cannot be decoded properly into '
-                      'unicode. Check their content: %s',
-                      ', '.join(at_fault_files))
+            log.error(
+                'HINT: Following files cannot be decoded properly into '
+                'unicode. Check their content: %s',
+                ', '.join(at_fault_files),
+            )

@@ -1,111 +1,167 @@
 version: 2.1
 
 orbs:
-  linter: talkiq/linter@2.0.0
+  docker: talkiq/docker@4.1.2
+  linter: talkiq/linter@4.0.0
+
+executors:
+  docker-git:
+    docker:
+      - image: docker:25.0.5-git
+    resource_class: medium
+  py310:
+    docker:
+      - image: python:3.10-alpine
+    resource_class: small
+  py311:
+    docker:
+      - image: python:3.11-alpine
+    resource_class: small
+  py312:
+    docker:
+      - image: python:3.12-alpine
+    resource_class: small
+  py313:
+    docker:
+      - image: python:3.13-alpine
+    resource_class: small
+  py314:
+    docker:
+      - image: python:3.14-alpine
+    resource_class: small
+  pypy73:  # py310
+    docker:
+      - image: pypy:3-7.3-slim
+    resource_class: small
+
+commands:
+  # See thekevjames/tools
+  custom-tag:
+    parameters:
+      ident:
+        type: string
+        default: "coveralls"
+      tag:
+        default: /tmp/custom-tag
+        type: string
+    steps:
+      - run: docker tag "thekevjames/<<parameters.ident>>:latest" "thekevjames/<<parameters.ident>>:$(cat <<parameters.tag>>)"
+      - run: docker tag "quay.io/thekevjames/<<parameters.ident>>:latest" "quay.io/thekevjames/<<parameters.ident>>:$(cat <<parameters.tag>>)"
+      - run: docker push "thekevjames/<<parameters.ident>>:$(cat <<parameters.tag>>)"
+      - run: docker push "quay.io/thekevjames/<<parameters.ident>>:$(cat <<parameters.tag>>)"
 
 jobs:
-  toxpy:
-    docker:
-      - image: python:<<parameters.docker_image>>-alpine
+  # See thekevjames/tools
+  docker-publish:
+    executor: docker-git
     parameters:
-      cov_version:
-        default: ""
+      ident:
         type: string
-      docker_image:
-        type: string
-      # TODO: figure out `<<parameters.docker_image>>.replace('.','')`
-      tox_environment:
+        default: "coveralls"
+      tag:
         type: string
     steps:
-      - run: apk add --no-cache gcc git libffi-dev musl-dev openssh-client openssl-dev
       - checkout
-      - run: pip install tox tox-factor
-      - unless:
-          condition: <<parameters.cov_version>>
-          steps:
-            - run: tox -f <<parameters.tox_environment>>
-            - run: tox -e coveralls41
-      - when:
-          condition: <<parameters.cov_version>>
-          steps:
-            - run: tox -f <<parameters.tox_environment>>-cov<<parameters.cov_version>>
-            - run: tox -e coveralls<<parameters.cov_version>>
+      - setup_remote_docker
+      - run: echo "$DOCKER_PASS" | docker login docker.io --username "$DOCKER_USER" --password-stdin
+      - run: echo "$QUAY_PASS" | docker login quay.io --username "$QUAY_USER" --password-stdin
+      - docker/build:
+          local_image_name: "<<parameters.ident>>:${CIRCLE_SHA1:0:10}"
+      - run: docker tag "<<parameters.ident>>:${CIRCLE_SHA1:0:10}" "thekevjames/<<parameters.ident>>:<<parameters.tag>>"
+      - run: docker tag "<<parameters.ident>>:${CIRCLE_SHA1:0:10}" "thekevjames/<<parameters.ident>>:latest"
+      - run: docker tag "<<parameters.ident>>:${CIRCLE_SHA1:0:10}" "quay.io/thekevjames/<<parameters.ident>>:<<parameters.tag>>"
+      - run: docker tag "<<parameters.ident>>:${CIRCLE_SHA1:0:10}" "quay.io/thekevjames/<<parameters.ident>>:latest"
+      - run: docker push "thekevjames/<<parameters.ident>>:<<parameters.tag>>"
+      - run: docker push "thekevjames/<<parameters.ident>>:latest"
+      - run: docker push "quay.io/thekevjames/<<parameters.ident>>:<<parameters.tag>>"
+      - run: docker push "quay.io/thekevjames/<<parameters.ident>>:latest"
+
+  # See thekevjames/tools
+  docker-readme-build:
+    docker:
+      - image: pandoc/core:3.8.2
+    steps:
+      - run: apk add --no-cache --no-progress ca-certificates openssl
+      - run: mkdir /meta
+      - checkout
+      - run: pandoc -o/meta/README.md README.rst
+      - persist_to_workspace:
+          root: /meta
+          paths:
+            - README.md
+
+  # See thekevjames/tools
+  # TODO: this should be doable with curl or python...
+  docker-readme-push:
+    docker:
+      - image: node:23.11.1-alpine
+    parameters:
+      ident:
+        type: string
+        default: "coveralls"
+    steps:
+      - run: apk add --no-cache --no-progress ca-certificates openssl
+      - checkout
+      - run: npm install docker-hub-api
+      - attach_workspace:
+          at: /meta
+      - run: node ./docker-update-readme.js thekevjames <<parameters.ident>> /meta/README.md
+
+  toxpy:
+    executor: <<parameters.executor>>
+    parameters:
+      executor:
+        type: executor
+    steps:
+      - run: apk add --no-cache git
+      - checkout
+      - run: pip install --upgrade tox
+      - run: tox run -f "${CIRCLE_JOB//test-}"
+      - run: tox run -e upload
 
   toxpypy:
-    docker:
-      - image: pypy:<<parameters.docker_image>>
+    executor: <<parameters.executor>>
     parameters:
-      cov_version:
-        type: string
-      docker_image:
-        type: string
+      executor:
+        type: executor
     steps:
+      - run: apt-get update -qy
+      - run: apt-get install -qy --no-install-recommends git
       - checkout
-      - run: pip install tox tox-factor
-      - run: tox -f pypy3-cov<<parameters.cov_version>>
-      - run: tox -e coveralls<<parameters.cov_version>>
+      - run: pip install --upgrade tox
+      - run: tox run -f pypy3
+      - run: tox run -e upload
 
 workflows:
-  lint:
+  docker:
+    when:
+      equal: [ master, << pipeline.git.branch >> ]
+    jobs:
+      - docker-publish:
+          tag: "${CIRCLE_SHA1:0:10}"
+          post-steps:
+            - run: |
+                export COVERALLS_VERSION=$(awk -F'=' '/ARG COVERALLS_VERSION=/ {print substr($2, 1, length($2))}' Dockerfile)
+                echo "${COVERALLS_VERSION}" >/tmp/custom-tag
+            - custom-tag
+      - docker-readme-build:
+          requires:
+            - docker-publish
+      - docker-readme-push:
+          requires:
+            - docker-readme-build
+
+  test:
     jobs:
       - linter/pre-commit:
-          # N.B. lowest common denominator, don't want to error on not using
-          # the latest syntax.
-          python_version: 3.6.15
-
-  test-cpython:
-    jobs:
+          executor: py310
+          pre-steps:
+            - run: apk add --no-cache git
       - toxpy:
-          name: test-py3.5
-          docker_image: '3.5'
-          tox_environment: py35
-      - toxpy:
-          name: test-py3.6-cov<<matrix.cov_version>>
-          docker_image: '3.6'
-          tox_environment: py36
+          name: test-<<matrix.executor>>
           matrix:
             parameters:
-              cov_version: ['41', '5', '6']
-      - toxpy:
-          name: test-py3.7-cov<<matrix.cov_version>>
-          docker_image: '3.7'
-          tox_environment: py37
-          matrix:
-            parameters:
-              cov_version: ['41', '5', '6']
-      - toxpy:
-          name: test-py3.8-cov<<matrix.cov_version>>
-          docker_image: '3.8'
-          tox_environment: py38
-          matrix:
-            parameters:
-              cov_version: ['41', '5', '6']
-      - toxpy:
-          name: test-py3.9-cov<<matrix.cov_version>>
-          docker_image: '3.9'
-          tox_environment: py39
-          matrix:
-            parameters:
-              cov_version: ['41', '5', '6']
-      - toxpy:
-          name: test-py3.10-cov<<matrix.cov_version>>
-          docker_image: '3.10'
-          tox_environment: py310
-          matrix:
-            parameters:
-              cov_version: ['41', '5', '6']
-
-  test-pypy:
-    jobs:
+              executor: [py310, py311, py312, py313, py314]
       - toxpypy:
-          name: test-pypy<<matrix.docker_image>>-cov<<matrix.cov_version>>
-          matrix:
-            parameters:
-              cov_version: ['41', '5']
-              docker_image: ['3-5', '3-6']
-      - toxpypy:
-          name: test-pypy3-7-cov<<matrix.cov_version>>
-          docker_image: '3-7'
-          matrix:
-            parameters:
-              cov_version: ['41', '5', '6']
+          name: test-pypy73
+          executor: pypy73

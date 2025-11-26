@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+from typing import Any
 
 from .exception import CoverallsException
 
@@ -8,27 +9,28 @@ from .exception import CoverallsException
 log = logging.getLogger('coveralls.git')
 
 
-def run_command(*args):
-    with subprocess.Popen(list(args), stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE) as cmd:
-        stdout, stderr = cmd.communicate()
+def run_command(*args: str) -> str:
+    try:
+        cmd = subprocess.run(
+            list(args),
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise CoverallsException(
+            f'{e}\nSTDOUT: {e.stdout}\nSTDERR: {e.stderr}',
+        ) from e
 
-        if cmd.returncode != 0:
-            raise CoverallsException(
-                'command return code {}, STDOUT: "{}"\nSTDERR: "{}"'.format(
-                    cmd.returncode, stdout, stderr))
-
-        return stdout.decode().strip()
-
-
-def gitlog(fmt):
-    glog = run_command('git', '--no-pager', 'log', '-1',
-                       '--pretty=format:{}'.format(fmt))
-
-    return str(glog)
+    return cmd.stdout.decode('utf-8').strip()
 
 
-def git_branch():
+def gitlog(fmt: str) -> str:
+    return run_command(
+        'git', '--no-pager', 'log', '-1', f'--pretty=format:{fmt}',
+    )
+
+
+def git_branch() -> str | None:
     branch = None
     if os.environ.get('GITHUB_ACTIONS'):
         github_ref = os.environ.get('GITHUB_REF')
@@ -42,19 +44,21 @@ def git_branch():
             # E.g. in pull_request events.
             branch = os.environ.get('GITHUB_HEAD_REF')
     else:
-        branch = (os.environ.get('APPVEYOR_REPO_BRANCH')
-                  or os.environ.get('BUILDKITE_BRANCH')
-                  or os.environ.get('CI_BRANCH')
-                  or os.environ.get('CIRCLE_BRANCH')
-                  or os.environ.get('GIT_BRANCH')
-                  or os.environ.get('TRAVIS_BRANCH')
-                  or os.environ.get('BRANCH_NAME')
-                  or run_command('git', 'rev-parse', '--abbrev-ref', 'HEAD'))
+        branch = (
+            os.environ.get('APPVEYOR_REPO_BRANCH')
+            or os.environ.get('BUILDKITE_BRANCH')
+            or os.environ.get('CI_BRANCH')
+            or os.environ.get('CIRCLE_BRANCH')
+            or os.environ.get('GIT_BRANCH')
+            or os.environ.get('TRAVIS_BRANCH')
+            or os.environ.get('BRANCH_NAME')
+            or run_command('git', 'rev-parse', '--abbrev-ref', 'HEAD')
+        )
 
     return branch
 
 
-def git_info():
+def git_info() -> dict[str, dict[str, Any]]:
     """
     A hash of Git data that can be used to display more information to users.
 
@@ -86,9 +90,11 @@ def git_info():
             'committer_email': gitlog('%ce'),
             'message': gitlog('%s'),
         }
-        remotes = [{'name': line.split()[0], 'url': line.split()[1]}
-                   for line in run_command('git', 'remote', '-v').splitlines()
-                   if '(fetch)' in line]
+        remotes = [
+            {'name': line.split()[0], 'url': line.split()[1]}
+            for line in run_command('git', 'remote', '-v').splitlines()
+            if '(fetch)' in line
+        ]
     except (CoverallsException, OSError) as ex:
         # When git is not available, try env vars as per Coveralls docs:
         # https://docs.coveralls.io/mercurial-support
@@ -108,9 +114,10 @@ def git_info():
             'url': os.environ.get('GIT_URL'),
         }]
         if not all(head.values()):
-            log.warning('Failed collecting git data. Are you running '
-                        'coveralls inside a git repository? Is git installed?',
-                        exc_info=ex)
+            log.warning(
+                'Failed collecting git data. Are you running coveralls inside '
+                'a git repository? Is git installed?', exc_info=ex,
+            )
             return {}
 
     return {

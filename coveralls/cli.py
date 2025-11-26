@@ -36,21 +36,22 @@ Example:
     Job #38.1
     https://coveralls.io/jobs/92059
 """
+import importlib.metadata
 import logging
 import sys
 
 import docopt
 
 from .api import Coveralls
-from .exception import CoverallsException
-from .version import __version__
 
 
 log = logging.getLogger('coveralls')
 
 
 def main(argv=None):
-    options = docopt.docopt(__doc__, argv=argv, version=__version__)
+    # pylint: disable=too-complex
+    version = importlib.metadata.version('coveralls')
+    options = docopt.docopt(__doc__, argv=argv, version=version)
     if options['debug']:
         options['--verbose'] = True
 
@@ -61,11 +62,13 @@ def main(argv=None):
     token_required = not options['debug'] and not options['--output']
 
     try:
-        coverallz = Coveralls(token_required,
-                              config_file=options['--rcfile'],
-                              service_name=options['--service'],
-                              base_dir=options.get('--basedir') or '',
-                              src_dir=options.get('--srcdir') or '')
+        coverallz = Coveralls(
+            token_required,
+            config_file=options['--rcfile'],
+            service_name=options['--service'],
+            base_dir=options.get('--basedir') or '',
+            src_dir=options.get('--srcdir') or '',
+        )
 
         if options['--merge']:
             coverallz.merge(options['--merge'])
@@ -101,6 +104,6 @@ def main(argv=None):
             log.info(result.get('url'))
     except KeyboardInterrupt:  # pragma: no cover
         log.info('Aborted')
-    except CoverallsException as e:
-        log.exception(e)
+    except Exception as e:
+        log.exception('Error running coveralls: %s', e)
         sys.exit(1)

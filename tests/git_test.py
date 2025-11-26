@@ -5,14 +5,26 @@ import tempfile
 import unittest
 from unittest import mock
 
+import pytest
+
 import coveralls.git
 from coveralls.exception import CoverallsException
+from coveralls.git import run_command
+
 
 GIT_COMMIT_MSG = 'first commit'
 GIT_EMAIL = 'me@here.com'
 GIT_NAME = 'Daniël'
 GIT_REMOTE = 'origin'
 GIT_URL = 'https://github.com/username/Hello-World.git'
+
+
+def in_git_dir() -> bool:
+    try:
+        run_command('git', 'rev-parse')
+        return True
+    except Exception:
+        return False
 
 
 class GitTest(unittest.TestCase):
@@ -32,14 +44,24 @@ class GitTest(unittest.TestCase):
         open('README', 'a').close()  # pylint: disable=consider-using-with
 
         subprocess.call(['git', 'init'], cwd=self.dir)
-        subprocess.call(['git', 'config', 'user.name',
-                         '"{}"'.format(GIT_NAME)], cwd=self.dir)
-        subprocess.call(['git', 'config', 'user.email',
-                         '"{}"'.format(GIT_EMAIL)], cwd=self.dir)
+        subprocess.call(
+            [
+                'git', 'config', 'user.name',
+                f'"{GIT_NAME}"',
+            ], cwd=self.dir,
+        )
+        subprocess.call(
+            [
+                'git', 'config', 'user.email',
+                f'"{GIT_EMAIL}"',
+            ], cwd=self.dir,
+        )
         subprocess.call(['git', 'add', 'README'], cwd=self.dir)
         subprocess.call(['git', 'commit', '-m', GIT_COMMIT_MSG], cwd=self.dir)
-        subprocess.call(['git', 'remote', 'add', GIT_REMOTE, GIT_URL],
-                        cwd=self.dir)
+        subprocess.call(
+            ['git', 'remote', 'add', GIT_REMOTE, GIT_URL],
+            cwd=self.dir,
+        )
 
     @mock.patch.dict(os.environ, {'TRAVIS_BRANCH': 'master'}, clear=True)
     def test_git(self):
@@ -58,14 +80,15 @@ class GitTest(unittest.TestCase):
                 },
                 'remotes': [{
                     'url': GIT_URL,
-                    'name': GIT_REMOTE
+                    'name': GIT_REMOTE,
                 }],
-                'branch': 'master'
-            }
+                'branch': 'master',
+            },
         }
 
 
 class GitLogTest(GitTest):
+    @pytest.mark.skipif(not in_git_dir(), reason='requires .git directory')
     def test_gitlog(self):
         git_info = coveralls.git.gitlog('%H')
         assert re.match(r'^[a-f0-9]{40}$', git_info)
@@ -90,17 +113,19 @@ class GitInfoTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         os.chdir(self.dir)
 
-    @mock.patch.dict(os.environ, {
-        'GIT_ID': '5e837ce92220be64821128a70f6093f836dd2c05',
-        'GIT_BRANCH': 'master',
-        'GIT_AUTHOR_NAME': GIT_NAME,
-        'GIT_AUTHOR_EMAIL': GIT_EMAIL,
-        'GIT_COMMITTER_NAME': GIT_NAME,
-        'GIT_COMMITTER_EMAIL': GIT_EMAIL,
-        'GIT_MESSAGE': GIT_COMMIT_MSG,
-        'GIT_URL': GIT_URL,
-        'GIT_REMOTE': GIT_REMOTE,
-    }, clear=True)
+    @mock.patch.dict(
+        os.environ, {
+            'GIT_ID': '5e837ce92220be64821128a70f6093f836dd2c05',
+            'GIT_BRANCH': 'master',
+            'GIT_AUTHOR_NAME': GIT_NAME,
+            'GIT_AUTHOR_EMAIL': GIT_EMAIL,
+            'GIT_COMMITTER_NAME': GIT_NAME,
+            'GIT_COMMITTER_EMAIL': GIT_EMAIL,
+            'GIT_MESSAGE': GIT_COMMIT_MSG,
+            'GIT_URL': GIT_URL,
+            'GIT_REMOTE': GIT_REMOTE,
+        }, clear=True,
+    )
     def test_gitinfo_envvars(self):
         git_info = coveralls.git.git_info()
         commit_id = git_info['git']['head'].pop('id')
@@ -131,32 +156,41 @@ class GitInfoTest(unittest.TestCase):
 
 
 class GitInfoOverridesTest(unittest.TestCase):
-    @mock.patch.dict(os.environ, {
-        'GITHUB_ACTIONS': 'true',
-        'GITHUB_REF': 'refs/pull/1234/merge',
-        'GITHUB_SHA': 'bb0e00166b28f49db04d6a8b8cb4bddb5afa529f',
-        'GITHUB_HEAD_REF': 'fixup-branch'
-    }, clear=True)
+    @pytest.mark.skipif(not in_git_dir(), reason='requires .git directory')
+    @mock.patch.dict(
+        os.environ, {
+            'GITHUB_ACTIONS': 'true',
+            'GITHUB_REF': 'refs/pull/1234/merge',
+            'GITHUB_SHA': 'bb0e00166b28f49db04d6a8b8cb4bddb5afa529f',
+            'GITHUB_HEAD_REF': 'fixup-branch',
+        }, clear=True,
+    )
     def test_gitinfo_github_pr(self):
         git_info = coveralls.git.git_info()
         assert git_info['git']['branch'] == 'fixup-branch'
 
-    @mock.patch.dict(os.environ, {
-        'GITHUB_ACTIONS': 'true',
-        'GITHUB_REF': 'refs/heads/master',
-        'GITHUB_SHA': 'bb0e00166b28f49db04d6a8b8cb4bddb5afa529f',
-        'GITHUB_HEAD_REF': ''
-    }, clear=True)
+    @pytest.mark.skipif(not in_git_dir(), reason='requires .git directory')
+    @mock.patch.dict(
+        os.environ, {
+            'GITHUB_ACTIONS': 'true',
+            'GITHUB_REF': 'refs/heads/master',
+            'GITHUB_SHA': 'bb0e00166b28f49db04d6a8b8cb4bddb5afa529f',
+            'GITHUB_HEAD_REF': '',
+        }, clear=True,
+    )
     def test_gitinfo_github_branch(self):
         git_info = coveralls.git.git_info()
         assert git_info['git']['branch'] == 'master'
 
-    @mock.patch.dict(os.environ, {
-        'GITHUB_ACTIONS': 'true',
-        'GITHUB_REF': 'refs/tags/v1.0',
-        'GITHUB_SHA': 'bb0e00166b28f49db04d6a8b8cb4bddb5afa529f',
-        'GITHUB_HEAD_REF': ''
-    }, clear=True)
+    @pytest.mark.skipif(not in_git_dir(), reason='requires .git directory')
+    @mock.patch.dict(
+        os.environ, {
+            'GITHUB_ACTIONS': 'true',
+            'GITHUB_REF': 'refs/tags/v1.0',
+            'GITHUB_SHA': 'bb0e00166b28f49db04d6a8b8cb4bddb5afa529f',
+            'GITHUB_HEAD_REF': '',
+        }, clear=True,
+    )
     def test_gitinfo_github_tag(self):
         git_info = coveralls.git.git_info()
         assert git_info['git']['branch'] == 'v1.0'
